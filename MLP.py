@@ -34,8 +34,8 @@ class MultiLayerPerceptron():
         self.activation_derivative = activation_derivative
         self.losses = []
 
-        self.input_weights = np.random.randn(input_size, hidden_size) * np.sqrt(2 / input_size)  # He Initialization for ReLU
-        self.output_weights = np.random.randn(hidden_size, output_size) * np.sqrt(2 / hidden_size)  # He Initialization
+        self.input_to_hidden_weights = np.random.randn(input_size, hidden_size) * np.sqrt(2 / input_size)  # He Initialization for ReLU
+        self.hidden_to_output_weights = np.random.randn(hidden_size, output_size) * np.sqrt(1 / hidden_size) # Xavier Initialization
 
         self.hidden_bias = np.zeros(hidden_size)
         self.output_bias = np.zeros(output_size)
@@ -45,9 +45,9 @@ class MultiLayerPerceptron():
 
     def forward(self, x):
         """Forward propagation"""
-        self.hidden_layer_input = np.dot(x, self.input_weights) + self.hidden_bias
+        self.hidden_layer_input = np.dot(x, self.input_to_hidden_weights) + self.hidden_bias
         self.hidden_layer_output = self.activation_function(self.hidden_layer_input)
-        self.output_layer_input = np.dot(self.hidden_layer_output, self.output_weights) + self.output_bias
+        self.output_layer_input = np.dot(self.hidden_layer_output, self.hidden_to_output_weights) + self.output_bias
         self.output = self.output_layer_input  # Linear activation in output
         return self.output
 
@@ -58,13 +58,13 @@ class MultiLayerPerceptron():
 
         dL_doutput = (self.output - y) / batch_size  # MSE derivative
 
-        doutput_dhidden = dL_doutput.dot(self.output_weights.T)
+        doutput_dhidden = dL_doutput.dot(self.hidden_to_output_weights.T)
         delta_hidden = doutput_dhidden * self.activation_derivative(self.hidden_layer_output)
         
         # Update weights and biases
-        self.output_weights -= self.hidden_layer_output.T.dot(dL_doutput) * learning_rate
+        self.hidden_to_output_weights -= self.hidden_layer_output.T.dot(dL_doutput) * learning_rate
         self.output_bias -= np.sum(dL_doutput, axis=0) * learning_rate
-        self.input_weights -= x.T.dot(delta_hidden) * learning_rate
+        self.input_to_hidden_weights -= x.T.dot(delta_hidden) * learning_rate
         self.hidden_bias -= np.sum(delta_hidden, axis=0) * learning_rate
 
     def train(self, x, y, epochs, learning_rate):
