@@ -26,30 +26,68 @@ def linear_derivative(x):
     return 1
 
 class MultiLayerPerceptron():
-    def __init__(self, input_size, hidden_size, output_size, activation_function, activation_derivative):
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-        self.output_size = output_size
-        self.activation_function = activation_function
-        self.activation_derivative = activation_derivative
-        self.losses = []
+    def __init__(self, num_layers=3, layer_sizes=[1, 10, 1],
+                output_activation_function=linear, output_activation_derivative=linear_derivative,
+                hidden_activation_function=relu, hidden_activation_derivative=relu_derivative):
+        
+        if num_layers != len(layer_sizes):
+            raise Exception("Number of layers and number of layer sizes do not match")
+        
+        self.num_layers = num_layers
+        self.layer_sizes = layer_sizes
 
-        self.input_to_hidden_weights = np.random.randn(input_size, hidden_size) * np.sqrt(2 / input_size)  # He Initialization for ReLU
-        self.hidden_to_output_weights = np.random.randn(hidden_size, output_size) * np.sqrt(1 / hidden_size) # Xavier Initialization
+        self.output_activation_function = output_activation_function
+        self.output_activation_derivative = output_activation_derivative
+        self.hidden_activation_function = hidden_activation_function
+        self.hidden_activation_derivative = hidden_activation_derivative
 
-        self.hidden_bias = np.zeros(hidden_size)
-        self.output_bias = np.zeros(output_size)
+        self.losses = []          
+
+        self.weights = []
+        self.bias = [np.zeros(layer_sizes[0])]  
+
+        # initialise hidden layers
+        for i in range(1, num_layers-1, 1):
+            self.weights.append(np.random.randn(layer_sizes[i-1], layer_sizes[i]) * np.sqrt(2 / layer_sizes[i-1])) # He initialisation
+            self.bias.append(np.zeros(layer_sizes[i]))
+        
+        # initialise final weights between hidden and output layers
+        self.weights.append(np.random.randn(layer_sizes[-2], layer_sizes[-1]) * np.sqrt(1 / layer_sizes[-2])) # Xavier Initialization
+        self.bias.append(np.zeros(layer_sizes[-1]))
+
 
     def loss(self, y):
-        return np.mean(np.square(y - self.output))
+        return np.mean(np.square(y - self.prediction))
 
     def forward(self, x):
-        """Forward propagation"""
-        self.hidden_layer_input = np.dot(x, self.input_to_hidden_weights) + self.hidden_bias
-        self.hidden_layer_output = self.activation_function(self.hidden_layer_input)
-        self.output_layer_input = np.dot(self.hidden_layer_output, self.hidden_to_output_weights) + self.output_bias
-        self.output = self.output_layer_input  # Linear activation in output
-        return self.output
+        # Forward propagation
+        print("Input layer")
+        print(f"x shape: {x.shape}, weights[0] shape: {self.weights[0].shape}, bias[0] shape: {self.bias[0].shape}")
+        
+        input = np.dot(x, self.weights[0]) + self.bias[0]
+        print(f"After first layer: input shape: {input.shape}")
+        
+        output = self.hidden_activation_function(input)
+        print(f"After first activation: output shape: {output.shape}")
+    
+        for i in range(1, self.num_layers - 1):
+            print(f"Layer {i}: output: {output.shape}")
+            print(f"Layer {i}: weight{i}: {self.weights[i].shape}")
+
+
+            input = np.dot(output, self.weights[i]) + self.bias[i]
+            print(f"Layer {i}: input shape: {input.shape}")
+            
+            output = self.hidden_activation_function(input)
+            print(f"Layer {i}: output shape: {output.shape}")
+    
+        output_layer_input = np.dot(output, self.weights[-1]) + self.bias[-1]
+        print(f"Output layer input shape: {output_layer_input.shape}")
+        
+        self.prediction = self.output_activation_function(output_layer_input)
+        print(f"Prediction shape: {self.prediction.shape}")
+    
+        return self.prediction
 
     def backprop(self, x, y, learning_rate):
         """Backward propagation"""
@@ -87,4 +125,18 @@ class MultiLayerPerceptron():
         plt.ylabel('Loss')
         plt.title('Loss vs Epoch')
         plt.show(block=False)
+
+    def print_architecture(self):
+        print("Number of weight layers: ", len(self.weights))
+        print("Number of bias layers: ", len(self.bias))
+
+        print("Dimensions of weights")
+        for weight in self.weights:
+            print(weight.shape)
+
+        print("Dimensions of biases")
+        for layer in self.bias:
+            print(layer.shape)
+
+
 
