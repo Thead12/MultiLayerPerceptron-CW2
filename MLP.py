@@ -60,50 +60,63 @@ class MultiLayerPerceptron():
         return np.mean(np.square(y - self.prediction))
 
     def forward(self, x):
-        # Forward propagation
-        print("Input layer")
-        print(f"x shape: {x.shape}, weights[0] shape: {self.weights[0].shape}, bias[0] shape: {self.bias[0].shape}")
-        
+        inputs = [x] # container to store pre activations for backprop calculation
+        # input layer
         input = np.dot(x, self.weights[0]) + self.bias[0]
-        print(f"After first layer: input shape: {input.shape}")
-        
+        inputs.append(input)    # store pre activation
         output = self.hidden_activation_function(input)
-        print(f"After first activation: output shape: {output.shape}")
-    
+        # hidden layers
         for i in range(1, self.num_layers - 2):
-            print(f"Layer {i}: output: {output.shape}")
-            print(f"Layer {i}: weight{i}: {self.weights[i].shape}")
-
-
             input = np.dot(output, self.weights[i]) + self.bias[i]
-            print(f"Layer {i}: input shape: {input.shape}")
-            
+            inputs.append(input)    # store pre activation
             output = self.hidden_activation_function(input)
-            print(f"Layer {i}: output shape: {output.shape}")
-    
+        # output layers
         output_layer_input = np.dot(output, self.weights[-1]) + self.bias[-1]
-        print(f"Output layer input shape: {output_layer_input.shape}")
-        
+        inputs.append(output_layer_input)        
         self.prediction = self.output_activation_function(output_layer_input)
-        print(f"Prediction shape: {self.prediction.shape}")
-    
+
+        self.pre_activations = inputs
         return self.prediction
 
     def backprop(self, x, y, learning_rate):
-        """Backward propagation"""
 
-        batch_size = x.shape[0]  # Number of samples
+        # output layer
+        #delta = (dL/dy)*g'(z) = (y_hat - y)g'(z)
+        delta = 2*(self.prediction - y)*self.output_activation_derivative(self.pre_activations[-1])
+        #print(f"Output layer delta shape", delta.shape)
 
-        dL_doutput = (self.output - y) / batch_size  # MSE derivative
+        # update weights and biases for output layer
+        # W = W - learning_rate*a(h-1).T*delta
+        activation = self.hidden_activation_function(self.pre_activations[-2])
+        self.weights[-1] -= learning_rate * np.dot(activation.T, delta)
+        # b  = b-learning_rate*delta
+        self.bias[-1] -= learning_rate * np.sum(delta)    
 
-        doutput_dhidden = dL_doutput.dot(self.hidden_to_output_weights.T)
-        delta_hidden = doutput_dhidden * self.activation_derivative(self.hidden_layer_output)
-        
-        # Update weights and biases
-        self.hidden_to_output_weights -= self.hidden_layer_output.T.dot(dL_doutput) * learning_rate
-        self.output_bias -= np.sum(dL_doutput, axis=0) * learning_rate
-        self.input_to_hidden_weights -= x.T.dot(delta_hidden) * learning_rate
-        self.hidden_bias -= np.sum(delta_hidden, axis=0) * learning_rate
+        # hidden layers
+        for i in range(-2, -self.num_layers, -1):
+            delta = (np.dot(delta, self.weights[i+1].T))*self.hidden_activation_derivative(self.pre_activations[i])
+            
+            #print(f"Layer {self.num_layers + i + 1}: weights shape", self.weights[i].shape)
+            #print(f"Layer {self.num_layers + i + 1}: delta shape", delta.shape)
+
+            #print("i:", i)
+            #print("i-1:", i-1)
+            #for y in range(len(self.pre_activations)):
+                #print(f"Activations layer: {y}", self.pre_activations[y].shape)
+
+            activation = self.hidden_activation_function(self.pre_activations[i-1])
+            #print(f"Layer {self.num_layers + i + 1}: activatioins shape", activation.shape)
+
+
+            self.weights[i] -= learning_rate * np.dot(activation.T, delta)
+            self.bias[i] -= learning_rate * np.sum(delta)
+
+        # input layer
+        delta = (np.dot(delta, self.weights[0].T))*self.hidden_activation_derivative(self.pre_activations[1])
+
+        self.weights[0] -= learning_rate * np.dot(x.T, delta)
+        self.bias[0] -= learning_rate * np.sum(delta)
+
 
     def train(self, x, y, epochs, learning_rate):
         for epoch in range(epochs):
