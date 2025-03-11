@@ -44,7 +44,7 @@ class MultiLayerPerceptron():
         self.losses = []          
 
         self.weights = []
-        self.bias = [np.zeros(layer_sizes[0])]  
+        self.bias = []  
 
         # initialise hidden layers
         for i in range(1, num_layers-1, 1):
@@ -70,7 +70,7 @@ class MultiLayerPerceptron():
         output = self.hidden_activation_function(input)
         print(f"After first activation: output shape: {output.shape}")
     
-        for i in range(1, self.num_layers - 1):
+        for i in range(1, self.num_layers - 2):
             print(f"Layer {i}: output: {output.shape}")
             print(f"Layer {i}: weight{i}: {self.weights[i].shape}")
 
@@ -137,6 +137,5 @@ class MultiLayerPerceptron():
         print("Dimensions of biases")
         for layer in self.bias:
             print(layer.shape)
-
 
 
