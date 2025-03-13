@@ -45,15 +45,18 @@ class MultiLayerPerceptron():
 
         self.weights = []
         self.bias = []  
+        self.momentums = []
 
         # initialise hidden layers
         for i in range(1, num_layers-1, 1):
             self.weights.append(np.random.randn(layer_sizes[i-1], layer_sizes[i]) * np.sqrt(2 / layer_sizes[i-1])) # He initialisation
             self.bias.append(np.zeros(layer_sizes[i]))
+            self.momentums.append(np.zeros([layer_sizes[i-1], layer_sizes[i]]))
         
         # initialise final weights between hidden and output layers
         self.weights.append(np.random.randn(layer_sizes[-2], layer_sizes[-1]) * np.sqrt(1 / layer_sizes[-2])) # Xavier Initialization
         self.bias.append(np.zeros(layer_sizes[-1]))
+        self.momentums.append(np.zeros([layer_sizes[-2], layer_sizes[-1]]))
 
 
     def loss(self, y):
@@ -78,7 +81,8 @@ class MultiLayerPerceptron():
         self.pre_activations = inputs
         return self.prediction
 
-    def backprop(self, x, y, learning_rate):
+    def backprop(self, x, y, learning_rate=0.001, momentum_rate=0.9):
+
 
         # output layer
         #delta = (dL/dy)*g'(z) = (y_hat - y)g'(z)
@@ -88,7 +92,13 @@ class MultiLayerPerceptron():
         # update weights and biases for output layer
         # W = W - learning_rate*a(h-1).T*delta
         activation = self.hidden_activation_function(self.pre_activations[-2])
-        self.weights[-1] -= learning_rate * np.dot(activation.T, delta)
+
+        delta_w = learning_rate * np.dot(activation.T, delta)
+        
+        self.weights[-1] -= (delta_w + momentum_rate*self.momentums[-1])
+
+        self.momentums[-1] = delta_w
+
         # b  = b-learning_rate*delta
         self.bias[-1] -= learning_rate * np.sum(delta)    
 
@@ -105,18 +115,22 @@ class MultiLayerPerceptron():
                 #print(f"Activations layer: {y}", self.pre_activations[y].shape)
 
             activation = self.hidden_activation_function(self.pre_activations[i-1])
+
+            delta_w = learning_rate * np.dot(activation.T, delta)
             #print(f"Layer {self.num_layers + i + 1}: activatioins shape", activation.shape)
 
+            self.weights[i] -= (delta_w + momentum_rate * self.momentums[i])
 
-            self.weights[i] -= learning_rate * np.dot(activation.T, delta)
+            self.momentums[i] = delta_w
+
             self.bias[i] -= learning_rate * np.sum(delta)
 
         # input layer
         delta = (np.dot(delta, self.weights[0].T))*self.hidden_activation_derivative(self.pre_activations[1])
-
-        self.weights[0] -= learning_rate * np.dot(x.T, delta)
+        delta_w = learning_rate * np.dot(x.T, delta)
+        self.weights[0] -= (delta_w + momentum_rate * self.momentums[0])
+        self.momentums[0] = delta_w
         self.bias[0] -= learning_rate * np.sum(delta)
-
 
     def train(self, x, y, epochs, learning_rate):
         for epoch in range(epochs):
