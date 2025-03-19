@@ -25,30 +25,42 @@ def linear(x):
 def linear_derivative(x):
     return 1
 
+def sigmoidal_anneal(start, end, max_epochs, current_epoch):
+    a = 1 + (np.exp(10-((20*current_epoch)/max_epochs)))
+    return end + (start-end)*(1-1/a)
+
 class MultiLayerPerceptron():
-    def __init__(self, num_layers=3, layer_sizes=[1, 10, 1],
-                output_activation_function=linear, output_activation_derivative=linear_derivative,
-                hidden_activation_function=relu, hidden_activation_derivative=relu_derivative):
+    def __init__(self, layer_sizes=[1, 10, 1]):
         
-        if num_layers != len(layer_sizes):
-            raise Exception("Number of layers and number of layer sizes do not match")
-        
-        self.num_layers = num_layers
+        self.num_layers = len(layer_sizes)
         self.layer_sizes = layer_sizes
 
-        self.output_activation_function = output_activation_function
-        self.output_activation_derivative = output_activation_derivative
-        self.hidden_activation_function = hidden_activation_function
-        self.hidden_activation_derivative = hidden_activation_derivative
+        self.output_activation_function = linear
+        self.output_activation_derivative = linear_derivative
+        self.hidden_activation_function = relu
+        self.hidden_activation_derivative = relu_derivative
 
-        self.losses = []          
+        self.losses = []    
+        self.learning_rate = 0.001      
+        self.momentum_rate = 0.5
+        
+        self.print_epochs = 100
+        self.bold_driver_check = 1000
+        self.bold_driver_thresholds = [0.04, -0.001]
+        self.bold_driver_annealing_split = 0.5 # refers to fraction of epochs which use bold driver
+        
+        self.annealing_function = sigmoidal_anneal
+
+        self.weight_decay_coefficient = 0.01
+
+        self.gradient_clipping = 10
 
         self.weights = []
         self.bias = []  
         self.momentums = []
 
         # initialise hidden layers
-        for i in range(1, num_layers-1, 1):
+        for i in range(1, self.num_layers-1, 1):
             self.weights.append(np.random.randn(layer_sizes[i-1], layer_sizes[i]) * np.sqrt(2 / layer_sizes[i-1])) # He initialisation
             self.bias.append(np.zeros(layer_sizes[i]))
             self.momentums.append(np.zeros([layer_sizes[i-1], layer_sizes[i]]))
@@ -61,6 +73,12 @@ class MultiLayerPerceptron():
 
     def loss(self, y):
         return np.mean(np.square(y - self.prediction))
+    
+    def sum_weights(self):
+        total_sum = 0
+        for weight_matrix in self.weights:
+            total_sum += np.sum(weight_matrix**2)
+        return total_sum
 
     def forward(self, x):
         inputs = [x] # container to store pre activations for backprop calculation
@@ -83,6 +101,8 @@ class MultiLayerPerceptron():
 
     def backprop(self, x, y, learning_rate=0.001, momentum_rate=0.9):
 
+        self.previous_weights = [w.copy() for w in self.weights]
+        self.previous_biases = [b.copy() for b in self.bias]
 
         # output layer
         #delta = (dL/dy)*g'(z) = (y_hat - y)g'(z)
@@ -119,7 +139,9 @@ class MultiLayerPerceptron():
             delta_w = learning_rate * np.dot(activation.T, delta)
             #print(f"Layer {self.num_layers + i + 1}: activatioins shape", activation.shape)
 
-            self.weights[i] -= (delta_w + momentum_rate * self.momentums[i])
+            gradient = delta_w + momentum_rate * self.momentums[i]
+            np.clip(gradient,-self.gradient_clipping,self.gradient_clipping)
+            self.weights[i] -= gradient
 
             self.momentums[i] = delta_w
 
@@ -132,16 +154,61 @@ class MultiLayerPerceptron():
         self.momentums[0] = delta_w
         self.bias[0] -= learning_rate * np.sum(delta)
 
-    def train(self, x, y, epochs, learning_rate):
+    def undo_backprop(self):
+        # restore weights and biases to their previous values
+        self.weights = [w.copy() for w in self.previous_weights]
+        self.bias = [b.copy() for b in self.previous_biases]
+
+    def train(self, x, y, epochs, learning_rate, momentum_rate=0.9, weight_decay_coefficient=0.01):
+        self.learning_rate = learning_rate
+        self.momentum_rate = momentum_rate
+        self.weight_decay_coefficient = weight_decay_coefficient
+
         for epoch in range(epochs):
             self.forward(x)
-            self.backprop(x, y, learning_rate)
-            loss_value = self.loss(y)
+            self.backprop(x, y, self.learning_rate, momentum_rate)
+
+            weight_decay = 1/(epochs+1) * self.sum_weights()
+            loss_value = self.loss(y) + weight_decay
+
             self.losses.append(loss_value)
 
-            # Print loss every 100 epochs
-            if epoch % 100 == 0:
+            # adaptive learning rates
+            if epoch <= round(epochs*self.bold_driver_annealing_split):
+                # bold driver
+                if (epoch + 1) % self.bold_driver_check == 0:
+                    self.bold_driver(learning_rate)
+            else:
+                #apply annealing
+                start = self.learning_rate
+                end = learning_rate*0.1
+                num_epochs = epochs*self.bold_driver_annealing_split
+                self.learning_rate = self.annealing_function(start, end, num_epochs, epoch)
+
+            # print loss every ___ epochs
+            if epoch % self.print_epochs == 0:
                 print(f"Epoch {epoch}, Loss: {loss_value:.5f}")
+
+        print(min(self.losses))
+
+    def bold_driver(self, learning_rate):
+        delta_loss = (self.losses[-2] - self.losses[-1])/2  # Calculate change in loss
+
+        if delta_loss >= self.bold_driver_thresholds[0]:  # loss decrease
+            print("Previous and new loss: ", self.losses[-2], self.losses[-1])
+            print("Delta_loss:", delta_loss)
+            print("Previous learning rate: ", self.learning_rate)
+            if self.learning_rate <= learning_rate*50: self.learning_rate *= 1.05 # increase learning rate
+            print("Learning rate increased: ", self.learning_rate)
+        elif delta_loss <= self.bold_driver_thresholds[1]:  # loss increase
+            print("Previous and new loss: ", self.losses[-2], self.losses[-1])
+            print("Delta_loss:", delta_loss)
+            self.undo_backprop()  
+            print("Previous learning rate: ", self.learning_rate)
+            if self.learning_rate >= learning_rate/10: self.learning_rate *= 0.7 # decrease learning rate
+            print("Learning rate decreased: ", self.learning_rate)
+
+
 
     def predict(self, x):
         return self.forward(x)
